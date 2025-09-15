@@ -1,12 +1,11 @@
+# POC: https://gist.github.com/felipeadeildo, obrigado 🤲
+# Feito a partir de https://github.com/alefd2/script-download-lessons-rs 🚀
 # Para executar tenha Python, FFmpeg, e Yt-dlp instalados, e definidos em seu PATH no Windows!
 # Rod > pip install m3u8 requests beautifulsoup4
 # Importações úteis
 import json
 import os
 import pickle
-# import queue [DEPREC]
-# import random [DEPREC]
-# import threading [DEPREC]
 import re
 import time
 import shutil
@@ -16,7 +15,6 @@ from typing import Optional
 from urllib.parse import parse_qs
 from datetime import datetime
 
-# import m3u8 [DEPREC]
 import requests
 from bs4 import BeautifulSoup
 
@@ -56,7 +54,7 @@ def check_dependencies():
 
     print("✓ Todas as dependências foram encontradas.")
 
-# Classe para criar reportes de download, tem tempo de execução
+# Classe para criar reportes de download, em tempo de execução
 class DownloadReport:
     def __init__(self):
         self.successful_downloads = []
@@ -134,47 +132,6 @@ class DownloadReport:
         print("="*50)
         print(f"\nRelatório salvo em: {report_path}")
 
-# # Baixar usando panda [depreciado][contém DRM]
-# class PandaVideo:
-#     def __init__(self, video_id: str, save_path: str):
-#         self.video_id = video_id
-#         self.save_path = str(save_path) # yt-dlp funciona melhor com strings
-#         self.domain = "b-vz-762f4670-e04.tv.pandavideo.com.br"
-
-#     def download(self):
-#         # 1. Verifica se o arquivo já existe
-#         if os.path.exists(self.save_path):
-#             print(f"\tArquivo já existe: {os.path.basename(self.save_path)}. Pulando.")
-#             return True # Retorna True para indicar sucesso (ou que não precisou baixar)
-
-#         print(f"Baixando com yt-dlp: {os.path.basename(self.save_path)}")
-
-#         # 2. Monta a URL da playlist
-#         playlist_url = f"https://{self.domain}/{self.video_id}/playlist.m3u8"
-
-#         # 3. Monta o comando do yt-dlp
-#         # yt-dlp vai automaticamente escolher a melhor qualidade
-#         # --merge-output-format mp4: Garante que o arquivo final seja .mp4
-#         # --quiet: Evita poluir o console com logs de progresso
-#         # --concurrent-fragments 10: Baixa até 10 segmentos de vídeo ao mesmo tempo
-#         ytdlp_cmd = (
-#             f'yt-dlp "{playlist_url}" '
-#             f'--merge-output-format mp4 '
-#             # f'--quiet '
-#             f'--concurrent-fragments 10 '
-#             f'-o "{self.save_path}"'
-#         )
-
-#         # 4. Executa o comando e verifica o resultado
-#         exit_code = os.system(ytdlp_cmd)
-        
-#         if exit_code == 0:
-#             print("✓ Download concluído com sucesso!")
-#             return True
-#         else:
-#             print(f"✗ Erro ao executar yt-dlp (código de saída: {exit_code}).")
-#             return False
-
 # Baixar usando CDN [mais preciso]
 class CDNVideo:
     def __init__(self, video_id: str, save_path: str):
@@ -201,7 +158,7 @@ class CDNVideo:
         ytdlp_cmd = (
             f'yt-dlp "{playlist_url}" '
             f'--merge-output-format mp4 '
-            # f'--quiet '
+            # f'--quiet ' // Iria omitir os dados de download, removido temporariamente
             f'--concurrent-fragments 10 '
             f'--add-header "Referer: {self.referer}" '
             f'--add-header "Origin: {self.origin}" '
@@ -224,26 +181,15 @@ class VideoDownloader:
         self.video_id = video_id
         self.save_path = save_path
         print(video_id, 'Dados dos vídeos em plaintext para Debug')
-        # As novas classes não precisam mais do 'threads_count'
-        # [DEPRECIADO]
-        # self.panda = PandaVideo(video_id, save_path)
         self.cdn = CDNVideo(video_id, save_path)
 
     def download(self):
         # A verificação de arquivo existente já é feita dentro de cada
-        # classe (PandaVideo e CDNVideo), então não precisamos dela aqui.
+        # classe responsável (CDNVideo), então não precisamos dela aqui.
 
         print("--- Iniciando tentativa de download ---")
         
-        # [DEPRECIADO]
-        # 1. Tenta baixar com Panda. A função agora retorna True ou False.
-        # print("Tentando download com a fonte Panda...")
-        # if self.panda.download():
-        #     # Se retornou True, o download foi bem-sucedido.
-        #     print("-----------------------------------------")
-        #     return
-
-        # 2. Se o download com Panda falhou (retornou False), tenta com CDN.
+        # 1. Se o download com Panda falhou (retornou False), tenta com CDN.
         # print("\nFalha na fonte Panda. Tentando com a fonte CDN...")[DEPRECIADO]
         print("Realizando download das aulas via CDN, por favor, aguarde enquanto processamos os dados!")
         if self.cdn.download():
@@ -251,7 +197,7 @@ class VideoDownloader:
             print("-----------------------------------------")
             return
         
-        # 3. Se ambas as tentativas falharam.
+        # 2. Se ambas as tentativas falharam.
         print("\n✗ Não foi possível baixar o vídeo de nenhuma das fontes disponíveis.")
         print("-----------------------------------------")
     
