@@ -1,5 +1,8 @@
 # Downloader de Cursos da Rocketseat
 
+## Script original em: https://gist.github.com/felipeadeildo/961587b1f5660a5db42102666e9884d0
+Créditos para @felipeadeildo 
+
 Este é um script em Python projetado para automatizar o download de cursos, módulos e materiais da plataforma Rocketseat. Ele utiliza a sessão do usuário para acessar o conteúdo e o `yt-dlp` para baixar as videoaulas de forma eficiente.
 
 ## ⚠️ Aviso Legal
