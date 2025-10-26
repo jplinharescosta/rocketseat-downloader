@@ -1,1 +1,9 @@
 *.pkl
+/Cursos
+/relatorios
+.venv
+__pycache__/
+logs/
+pyproject.toml
+.env
+uv.lock

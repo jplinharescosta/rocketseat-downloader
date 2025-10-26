@@ -10,6 +10,7 @@ import re
 import time
 import shutil
 import sys
+import subprocess
 from pathlib import Path
 from typing import Optional
 from urllib.parse import parse_qs
@@ -17,11 +18,14 @@ from datetime import datetime
 
 import requests
 from bs4 import BeautifulSoup
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 BASE_API = "https://skylab-api.rocketseat.com.br"
 BASE_URL = "https://app.rocketseat.com.br"
 SESSION_PATH = Path(os.getenv("SESSION_DIR", ".")) / ".session.pkl"
 SESSION_PATH.parent.mkdir(exist_ok=True)
+DEFAULT_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "30"))
 
 # Função para limpar CMD
 def clear_screen():
@@ -137,7 +141,7 @@ class CDNVideo:
     def __init__(self, video_id: str, save_path: str):
         self.video_id = video_id
         self.save_path = str(save_path)
-        self.domain = "vz-dc851587-83d.b-cdn.net"
+        self.domain = os.getenv("CDN_DOMAIN", "vz-dc851587-83d.b-cdn.net")
         
         # Cabeçalhos importantes que o yt-dlp precisa enviar
         self.referer = "https://iframe.mediadelivery.net/"
@@ -153,26 +157,42 @@ class CDNVideo:
 
         # 2. Monta a URL da playlist
         playlist_url = f"https://{self.domain}/{self.video_id}/playlist.m3u8"
-
-        # 3. Monta o comando do yt-dlp, adicionando os cabeçalhos
-        ytdlp_cmd = (
-            f'yt-dlp "{playlist_url}" '
-            f'--merge-output-format mp4 '
-            # f'--quiet ' // Iria omitir os dados de download, removido temporariamente
-            f'--concurrent-fragments 10 '
-            f'--add-header "Referer: {self.referer}" '
-            f'--add-header "Origin: {self.origin}" '
-            f'-o "{self.save_path}"'
-        )
         
-        # 4. Executa o comando e verifica o resultado
-        exit_code = os.system(ytdlp_cmd)
+        print(f"URL da playlist: {playlist_url}")  # Debug da URL da playlist
 
-        if exit_code == 0:
-            print("✓ Download (CDN) concluído com sucesso!")
-            return True
-        else:
-            print(f"✗ Erro ao executar yt-dlp para CDN (código de saída: {exit_code}).")
+        # 3. Monta o comando do yt-dlp em lista para evitar problemas de shell/quotes
+        ytdlp_args = [
+            "yt-dlp",
+            playlist_url,
+            "--merge-output-format", "mp4",
+            "--concurrent-fragments", "10",
+            "--add-header", f"Referer: {self.referer}",
+            "--add-header", f"Origin: {self.origin}",
+            "-o", self.save_path,
+        ]
+
+        # 4. Executa o comando e verifica o resultado
+        try:
+            completed = subprocess.run(
+                ytdlp_args,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if completed.returncode == 0:
+                print("✓ Download (CDN) concluído com sucesso!")
+                return True
+            else:
+                print(f"✗ yt-dlp retornou código {completed.returncode}.")
+                if completed.stderr:
+                    print("Stderr:")
+                    print(completed.stderr.strip())
+                if completed.stdout:
+                    print("Stdout (parcial):")
+                    print(completed.stdout.strip()[:2000])
+                return False
+        except FileNotFoundError:
+            print("✗ yt-dlp não encontrado no PATH. Verifique a instalação.")
             return False
     
 # Gerenciador de Downloads, vai instanciar as duas classes acima - ou somente uma delas, se indisponível
@@ -214,22 +234,41 @@ class Rocketseat:
                 "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
                 "Referer": BASE_URL,
             })
+            # Configura retries e backoff para chamadas HTTP
+            retries = Retry(
+                total=5,
+                backoff_factor=0.3,
+                status_forcelist=(500, 502, 503, 504),
+                allowed_methods=("GET", "POST"),
+            )
+            adapter = HTTPAdapter(max_retries=retries)
+            self.session.mount("http://", adapter)
+            self.session.mount("https://", adapter)
+        self.timeout = DEFAULT_TIMEOUT
         self.download_report = DownloadReport()
+
+    def _get(self, url: str, **kwargs):
+        kwargs.setdefault("timeout", self.timeout)
+        return self.session.get(url, **kwargs)
+
+    def _post(self, url: str, **kwargs):
+        kwargs.setdefault("timeout", self.timeout)
+        return self.session.post(url, **kwargs)
     # Processo para validar credenciais, não adianta tentar baixar nada sem acesso legítimo ao conteúdo!
     def login(self, username: str, password: str):
         print("Realizando login...")
         payload = {"email": username, "password": password}
-        res = self.session.post(f"{BASE_API}/sessions", json=payload)
+        res = self._post(f"{BASE_API}/sessions", json=payload)
         res.raise_for_status()
         data = res.json()
 
         self.session.headers["Authorization"] = f"{data['type'].capitalize()} {data['token']}"
         self.session.cookies.update({
-            "skylab_next_access_token_v3": data["token"],
-            "skylab_next_refresh_token_v3": data["refreshToken"],
+            "skylab_next_access_token_v4": data["token"],
+            "skylab_next_refresh_token_v4": data["refreshToken"],
         })
-
-        account_infos = self.session.get(f"{BASE_API}/account").json()
+        
+        account_infos = self._get(f"{BASE_API}/account").json()
         print(f"Bem-vindo, {account_infos['name']}!")
         pickle.dump(self.session, SESSION_PATH.open("wb"))
     # Processo para recuperar dados presentes no site
@@ -239,7 +278,7 @@ class Rocketseat:
         
         # Get modules data from API
         url = f"{BASE_API}/v2/journeys/{specialization_slug}/progress/temp"
-        res = self.session.get(url)
+        res = self._get(url)
         res.raise_for_status()
 
         modules_data = []
@@ -252,24 +291,32 @@ class Rocketseat:
             modules_data = progress_data.get("nodes", [])
 
             journey_url = f"https://app.rocketseat.com.br/journey/{specialization_slug}/contents"
-            html_content = self.session.get(journey_url).text
+            html_content = self._get(journey_url).text
 
             for module in modules_data:
-                if module.get("type") == "cluster":
+                if module.get("type") in ("cluster", "group"):
+                    # 1) Preferimos usar o slug do módulo quando disponível (alinha com a API /journey-nodes/{slug})
+                    cluster_slug = module.get("slug")
+                    if cluster_slug:
+                        print(f"Usando slug do módulo (type={module.get('type')}) como cluster_slug para {module.get('title', 'Sem título')}: {cluster_slug}")
+                        module["cluster_slug"] = cluster_slug
+                        continue
+
+                    # 2) Fallback (mais frágil): varrer o HTML procurando links para classroom
                     search_pattern = f'<a class="w-full" href="/classroom/'
                     html_pos = html_content.find(search_pattern)
                     if html_pos != -1:
                         start_pos = html_pos + len(search_pattern)
                         end_pos = html_content.find('"', start_pos)
                         cluster_slug = html_content[start_pos:end_pos]
-                        print(f"Encontrado cluster_slug para módulo {module['title']}: {cluster_slug}")
+                        print(f"Encontrado cluster_slug (fallback HTML) para módulo {module.get('title', 'Sem título')}: {cluster_slug}")
                         module["cluster_slug"] = cluster_slug
                         html_content = html_content[end_pos:]
                     else:
-                        print(f"Não encontrado cluster_slug para módulo {module['title']}")
+                        print(f"Não encontrado cluster_slug para módulo {module.get('title', 'Sem título')}")
                         module["cluster_slug"] = None
                 else:
-                    print(f"Módulo {module['title']} não é do tipo cluster")
+                    print(f"Módulo {module.get('title', 'Sem título')} não é do tipo cluster/group")
                     module["cluster_slug"] = None
 
             print(f"Encontrados {len(modules_data)} módulos.")
@@ -281,32 +328,32 @@ class Rocketseat:
         return modules_data
 
     def __load_lessons_from_cluster(self, cluster_slug: str):
-        # Carrega as aulas de um cluster específico
-        print(f"Buscando lições para o cluster: {cluster_slug}")
+        # Carrega as aulas de um nó específico (cluster ou group)
+        print(f"Buscando lições para o nó: {cluster_slug}")
         url = f"{BASE_API}/journey-nodes/{cluster_slug}"
         
         try:
-            res = self.session.get(url)
+            res = self._get(url)
             res.raise_for_status()
             
             module_data = res.json()
-            print(f"Resposta da API para o cluster {cluster_slug}:")
-            print(json.dumps(module_data, indent=2))
+            print(f"Resposta da API para o nó {cluster_slug}:")
+            # print(json.dumps(module_data, indent=2)) # Debug completo da resposta da API <<<<<<<<<----------
             
-            # Salva estrutura para debug se diretório logs existir
-            if os.path.exists("logs"):
-                with open(f"logs/{sanitize_string(cluster_slug)}_cluster_details.json", "w") as f:
-                    json.dump(module_data, f, indent=2)
+            # Salva estrutura para debug
+            Path("logs").mkdir(parents=True, exist_ok=True)
+            with open(f"logs/{sanitize_string(cluster_slug)}_cluster_details.json", "w", encoding="utf-8") as f:
+                json.dump(module_data, f, indent=2)
             
             groups = []
-            if "cluster" in module_data and module_data["cluster"]:
+            # Caso 1: nó do tipo cluster (contém groups)
+            if module_data.get("cluster"):
                 cluster = module_data["cluster"]
-                
-                # Navegar pelos grupos de lições
+
                 for group in cluster.get("groups", []):
                     group_title = group.get('title', 'Sem Grupo')
                     print(f"\nProcessando grupo: {group_title}")
-                    
+
                     group_lessons = []
                     for lesson in group.get("lessons", []):
                         if "last" in lesson and lesson["last"]:
@@ -314,12 +361,26 @@ class Rocketseat:
                             lesson_data["group_title"] = group_title
                             print(f"Adicionando aula: {lesson_data.get('title', 'Sem título')}")
                             group_lessons.append(lesson_data)
-                    
+
                     if group_lessons:
-                        groups.append({
-                            "title": group_title,
-                            "lessons": group_lessons
-                        })
+                        groups.append({"title": group_title, "lessons": group_lessons})
+
+            # Caso 2: nó do tipo group (lições diretamente em "lessons")
+            elif module_data.get("group"):
+                group_node = module_data["group"]
+                group_title = group_node.get('title', 'Sem Grupo')
+                print(f"\nProcessando grupo único: {group_title}")
+
+                group_lessons = []
+                for lesson in group_node.get("lessons", []):
+                    if "last" in lesson and lesson["last"]:
+                        lesson_data = lesson["last"]
+                        lesson_data["group_title"] = group_title
+                        print(f"Adicionando aula: {lesson_data.get('title', 'Sem título')}")
+                        group_lessons.append(lesson_data)
+
+                if group_lessons:
+                    groups.append({"title": group_title, "lessons": group_lessons})
             
             print(f"\nEncontrados {len(groups)} grupos com um total de {sum(len(g['lessons']) for g in groups)} lições")
             return groups
@@ -379,21 +440,28 @@ class Rocketseat:
                     downloads_dir.mkdir(exist_ok=True)
                     
                     for download in lesson['downloads']:
-                        if 'file_url' in download and download['file_url']:
-                            download_url = download['file_url']
-                            download_title = download.get('title', 'arquivo')
+                        # Suporta variações comuns de chaves na API
+                        download_url = (
+                            download.get('file_url') or
+                            download.get('fileUrl') or
+                            download.get('url')
+                        )
+
+                        if download_url:
+                            download_title = download.get('title') or download.get('name') or 'arquivo'
                             file_ext = os.path.splitext(download_url)[1]
-                            
+
                             download_path = downloads_dir / f"{sanitize_string(download_title)}{file_ext}"
                             print(f"\t\tBaixando material: {download_title}")
-                            
+
                             try:
-                                response = requests.get(download_url)
+                                # Usa a sessão autenticada para downloads que possam exigir cookies/headers
+                                response = self._get(download_url)
                                 response.raise_for_status()
-                                
+
                                 with open(download_path, 'wb') as f:
                                     f.write(response.content)
-                                    
+
                                 print(f"\t\tMaterial salvo em: {download_path}")
                             except Exception as e:
                                 print(f"\t\tErro ao baixar material: {e}")
@@ -464,13 +532,12 @@ class Rocketseat:
             "types[0]": "SPECIALIZATION",
             "types[1]": "COURSE",
             "types[2]": "EXTRA",
-            "limit": "60",
+            "limit": "1000",
             "offset": "0",
             "page": "1",
             "sort_by": "relevance",
         }
-        # print(self)
-        specializations = self.session.get(f"{BASE_API}/catalog/list", params=params).json()["items"]
+        specializations = self._get(f"{BASE_API}/catalog/list", params=params).json()["items"]
         clear_screen()
         print("Selecione uma formação ou 0 para selecionar todas:")
         for i, specialization in enumerate(specializations, 1):
@@ -486,10 +553,15 @@ class Rocketseat:
 
     def run(self):
         if not self._session_exists:
-            self.login(
-                username=input("Seu email Rocketseat: "),
-                password=input("Sua senha: ")
-            )
+            # Permite autenticar via variáveis de ambiente ou prompt (senha mascarada)
+            email = os.getenv("ROCKETSEAT_EMAIL") or input("Seu email Rocketseat: ")
+            try:
+                import getpass
+                pwd = os.getenv("ROCKETSEAT_PASSWORD") or getpass.getpass("Sua senha: ")
+            except Exception:
+                pwd = os.getenv("ROCKETSEAT_PASSWORD") or input("Sua senha: ")
+
+            self.login(username=email, password=pwd)
         self.select_specializations()
 
 
