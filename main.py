@@ -17,6 +17,14 @@ from typing import Optional
 from urllib.parse import parse_qs
 from datetime import datetime
 
+# Carregar variáveis de ambiente de um arquivo .env, se disponível, sem exigir dependência instalada
+try:
+    import importlib
+    _dotenv = importlib.import_module("dotenv")
+    _dotenv.load_dotenv()  # Não sobrescreve variáveis já definidas no ambiente
+except Exception:
+    pass
+
 import requests
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter

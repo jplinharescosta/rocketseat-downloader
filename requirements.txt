@@ -1,5 +1,6 @@
 requests
 beautifulsoup4
 m3u8
+python-dotenv>=1.0
 ffmpeg-python
 selenium

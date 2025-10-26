@@ -70,12 +70,32 @@ Com os pré-requisitos atendidos, siga os passos abaixo.
 
     _Observação: O `m3u8` está listado, mas o código atual não o utiliza ativamente._
 
-4.  (Opcional) Configure variáveis de ambiente:
+4.  (Opcional) Configure variáveis de ambiente (ou use um arquivo .env):
 
     - `ROCKETSEAT_EMAIL` e `ROCKETSEAT_PASSWORD`: para login sem prompt.
     - `HTTP_TIMEOUT`: timeout padrão das requisições (segundos, ex.: `30`).
     - `CDN_DOMAIN`: domínio da CDN do vídeo (fallback padrão já configurado).
     - `SESSION_DIR`: pasta onde o arquivo `.session.pkl` será salvo (por padrão, a raiz do projeto).
+    - Variáveis do `rclone` para sincronização/cópia pós-download (detalhes abaixo).
+
+### Usando um arquivo .env
+
+Você pode criar um arquivo `.env` na raiz do projeto para configurar as variáveis sem poluir seu ambiente. Um modelo está disponível em `.env.example`.
+
+Passos:
+
+1. Copie o modelo:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+2. Edite o `.env` e preencha o que desejar (você pode deixar o email/senha em branco para serem solicitados).
+
+Observações:
+
+- O script carrega automaticamente o `.env` usando `python-dotenv` (já incluso em `requirements.txt`).
+- Variáveis já definidas no ambiente do sistema têm precedência sobre as do `.env`.
 
 ---
 
@@ -107,6 +127,20 @@ Com os pré-requisitos atendidos, siga os passos abaixo.
 5.  **Aguarde o Download**:
     - O script iniciará o processo, exibindo o progresso no console. Os arquivos serão salvos na pasta `Cursos`.
     - Ao final, um relatório detalhado será impresso no console e salvo em um arquivo na pasta `relatorios`.
+
+3.  (Opcional) Sincronização/backup automático para Google Drive com `rclone`:
+
+    Configure as seguintes variáveis no seu `.env` (ou exporte no ambiente):
+
+    - `RCLONE_SYNC=1` para habilitar a sincronização ao final de cada formação.
+    - `RCLONE_REMOTE=gdrive` (ou o nome do seu remote no rclone).
+    - `RCLONE_DEST=Cursos` (pasta no drive – será `gdrive:Cursos/...`).
+    - `RCLONE_MODE=copy` para copiar (não apaga nada), `sync` para sincronizar, `move` para mover e apagar a origem após copiar.
+    - `RCLONE_SCOPE=specialization` (padrão) para copiar apenas a pasta da formação concluída, ou `all` para copiar a pasta `Cursos` inteira.
+
+    Dicas:
+    - Para primeiro teste, você pode usar `RCLONE_EXTRA_ARGS=--dry-run` (simulação), depois remova para executar de verdade.
+    - Se preferir não ser perguntado sobre módulos quando selecionar todas as formações, o script já assume “baixar todos os módulos” automaticamente nesse caso.
 
 ---
 
@@ -143,6 +177,12 @@ O script criará a seguinte estrutura de pastas e arquivos:
 - `HTTP_TIMEOUT`: timeout (em segundos) para todas as requisições HTTP (padrão: 30).
 - `CDN_DOMAIN`: domínio da CDN usada nos vídeos (ex.: `vz-xxxx.b-cdn.net`).
 - `SESSION_DIR`: diretório para salvar `.session.pkl`.
+- `RCLONE_SYNC`: `1|true|yes` para habilitar sync/copy/move pós-formação.
+- `RCLONE_REMOTE`: nome do remote no rclone (ex.: `gdrive`).
+- `RCLONE_DEST`: pasta no remote (ex.: `Cursos` -> `gdrive:Cursos`).
+- `RCLONE_MODE`: `copy` (recomendado), `sync` ou `move`.
+- `RCLONE_SCOPE`: `specialization` (pasta da formação) ou `all` (pasta `Cursos`).
+- `RCLONE_TRANSFERS`, `RCLONE_CHECKERS`, `RCLONE_CHUNK_SIZE`, `RCLONE_RETRIES`, `RCLONE_LL_RETRIES`, `RCLONE_STATS`, `RCLONE_BWLIMIT`, `RCLONE_EXTRA_ARGS`, `RCLONE_BIN`.
 
 ---
 
