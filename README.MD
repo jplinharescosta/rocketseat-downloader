@@ -39,6 +39,7 @@ Antes de executar o script, garanta que você tem o seguinte instalado e configu
     - **Download**: [ffmpeg.org/download.html](https://ffmpeg.org/download.html)
     - **Instrução**: Após o download, **adicione o caminho da pasta `bin` do FFmpeg às suas variáveis de ambiente (PATH)**.
 3.  **yt-dlp**: A ferramenta principal para o download dos vídeos.
+
     - **Download**: [github.com/yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp)
     - **Instrução**: Após o download, **adicione o caminho do executável do yt-dlp às suas variáveis de ambiente (PATH)**.
 
@@ -62,9 +63,11 @@ Com os pré-requisitos atendidos, siga os passos abaixo.
 
 3.  **Instale as dependências Python**:
     Execute o comando a seguir para instalar as bibliotecas necessárias. É recomendado criar um ambiente virtual (`venv`) antes.
+
     ```bash
     pip install requests beautifulsoup4 m3u8
     ```
+
     _Observação: O `m3u8` está listado, mas o código atual não o utiliza ativamente._
 
 4.  (Opcional) Configure variáveis de ambiente:

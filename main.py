@@ -540,13 +540,14 @@ class Rocketseat:
         - RCLONE_REMOTE: nome do remote (default: 'gdrive')
         - RCLONE_DEST: pasta destino no remote (default: 'Cursos')
         - RCLONE_MODE: 'sync' ou 'copy' (default: 'sync')
-        - RCLONE_SCOPE: 'all' ou 'specialization' (default: 'all')
+        - RCLONE_SCOPE: 'all' ou 'specialization' (default: 'specialization')
         - RCLONE_TRANSFERS, RCLONE_CHECKERS, RCLONE_CHUNK_SIZE, RCLONE_RETRIES,
           RCLONE_LL_RETRIES, RCLONE_STATS, RCLONE_BWLIMIT, RCLONE_EXTRA_ARGS
         - RCLONE_BIN: nome/caminho do binário (default: 'rclone')
         """
         enabled = str(os.getenv("RCLONE_SYNC", "0")).lower() in ("1", "true", "yes")
         if not enabled:
+            print("[sync] Desabilitado (defina RCLONE_SYNC=1 para habilitar). Pulando sincronização.")
             return
 
         rclone_bin = os.getenv("RCLONE_BIN", "rclone")
@@ -556,7 +557,7 @@ class Rocketseat:
 
         remote = os.getenv("RCLONE_REMOTE", "gdrive")
         dest_base = os.getenv("RCLONE_DEST", "Cursos").rstrip("/")
-        scope = os.getenv("RCLONE_SCOPE", "all").lower()
+        scope = os.getenv("RCLONE_SCOPE", "specialization").lower()
         mode = os.getenv("RCLONE_MODE", "sync").lower()
         if mode not in ("sync", "copy"):
             mode = "sync"
@@ -572,7 +573,8 @@ class Rocketseat:
             print(f"Pasta de origem para sync não encontrada: {src}")
             return
 
-        print(f"Iniciando rclone {mode} de '{src}' para '{dest}' ...")
+        print(f"[sync] Iniciando rclone {mode}...")
+        print(f"[sync] Config: mode={mode}, scope={scope}, src='{src}', dest='{dest}'")
         args = [
             rclone_bin,
             mode,
