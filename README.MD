@@ -86,9 +86,9 @@ Passos:
 
 1. Copie o modelo:
 
-    ```bash
-    cp .env.example .env
-    ```
+   ```bash
+   cp .env.example .env
+   ```
 
 2. Edite o `.env` e preencha o que desejar (você pode deixar o email/senha em branco para serem solicitados).
 
@@ -125,10 +125,11 @@ Observações:
       - Digitar os números dos módulos desejados, separados por vírgula (ex: `1, 3, 5`), para baixar apenas os selecionados.
 
 5.  **Aguarde o Download**:
+
     - O script iniciará o processo, exibindo o progresso no console. Os arquivos serão salvos na pasta `Cursos`.
     - Ao final, um relatório detalhado será impresso no console e salvo em um arquivo na pasta `relatorios`.
 
-3.  (Opcional) Sincronização/backup automático para Google Drive com `rclone`:
+6.  (Opcional) Sincronização/backup automático para Google Drive com `rclone`:
 
     Configure as seguintes variáveis no seu `.env` (ou exporte no ambiente):
 
@@ -139,6 +140,7 @@ Observações:
     - `RCLONE_SCOPE=specialization` (padrão) para copiar apenas a pasta da formação concluída, ou `all` para copiar a pasta `Cursos` inteira.
 
     Dicas:
+
     - Para primeiro teste, você pode usar `RCLONE_EXTRA_ARGS=--dry-run` (simulação), depois remova para executar de verdade.
     - Se preferir não ser perguntado sobre módulos quando selecionar todas as formações, o script já assume “baixar todos os módulos” automaticamente nesse caso.
 
