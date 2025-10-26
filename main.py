@@ -662,15 +662,18 @@ class Rocketseat:
     def select_specializations(self):
         print("Buscando especializações disponíveis...")
         params = {
-            "types[0]": "SPECIALIZATION",
-            "types[1]": "COURSE",
-            "types[2]": "EXTRA",
-            "limit": "50",
+            "types[0]": "SPECIALIZATION",  # focamos apenas em formações para evitar 404
+            "limit": "1000",
             "offset": "0",
             "page": "1",
             "sort_by": "relevance",
         }
-        specializations = self._get(f"{BASE_API}/catalog/list", params=params).json()["items"]
+        items = self._get(f"{BASE_API}/catalog/list", params=params).json().get("items", [])
+        # Garante que só mostramos itens do tipo SPECIALIZATION, evitando chamadas /v2/journeys para outros tipos
+        specializations = [it for it in items if it.get("type") == "SPECIALIZATION"]
+        if not specializations:
+            print("Nenhuma formação (SPECIALIZATION) encontrada no catálogo.")
+            return
         clear_screen()
         print("Selecione uma formação ou 0 para selecionar todas:")
         for i, specialization in enumerate(specializations, 1):
@@ -681,6 +684,9 @@ class Rocketseat:
             for specialization in specializations:
                 self._download_courses(specialization["slug"], specialization["title"], auto_select_all_modules=True)
         else:
+            if choice < 1 or choice > len(specializations):
+                print("Opção inválida.")
+                return
             specialization = specializations[choice - 1]
             self._download_courses(specialization["slug"], specialization["title"]) 
 
