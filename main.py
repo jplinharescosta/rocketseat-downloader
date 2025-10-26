@@ -179,6 +179,8 @@ class CDNVideo:
                 check=False,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
             )
             if completed.returncode == 0:
                 print("✓ Download (CDN) concluído com sucesso!")
@@ -603,7 +605,14 @@ class Rocketseat:
                 print("Aviso: não foi possível interpretar RCLONE_EXTRA_ARGS, ignorando.")
 
         try:
-            completed = subprocess.run(args, check=False, capture_output=True, text=True)
+            completed = subprocess.run(
+                args,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
             if completed.returncode == 0:
                 print("✓ rclone finalizado com sucesso.")
             else:
