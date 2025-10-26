@@ -621,6 +621,16 @@ class Rocketseat:
         if "--dry-run" in tokens or "-n" in tokens:
             print("[sync] DRY-RUN habilitado (nenhuma alteração será aplicada). Remova '--dry-run' de RCLONE_EXTRA_ARGS para executar de verdade.")
 
+        # Adicionar progresso contínuo, a menos que usuário já tenha configurado algo específico
+        want_progress = str(os.getenv("RCLONE_PROGRESS", "1")).lower() in ("1", "true", "yes")
+        if want_progress and ("--progress" not in tokens and "--no-progress" not in tokens):
+            args.append("--progress")
+
+        # Em modo move, remover diretórios vazios da origem por padrão (pode desativar com RCLONE_KEEP_EMPTY_DIRS=1)
+        keep_empty = str(os.getenv("RCLONE_KEEP_EMPTY_DIRS", "0")).lower() in ("1", "true", "yes")
+        if mode == "move" and not keep_empty and "--delete-empty-src-dirs" not in tokens:
+            args.append("--delete-empty-src-dirs")
+
         # Mostrar comando completo para diagnóstico
         try:
             debug_cmd = " ".join(shlex.quote(a) for a in args)
@@ -629,24 +639,23 @@ class Rocketseat:
             pass
 
         try:
-            completed = subprocess.run(
+            # Stream de saída em tempo real (stdout e stderr juntos) para feedback contínuo
+            proc = subprocess.Popen(
                 args,
-                check=False,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
             )
-            if completed.returncode == 0:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                print(line.rstrip())
+            rc = proc.wait()
+            if rc == 0:
                 print("✓ rclone finalizado com sucesso.")
             else:
-                print(f"✗ rclone retornou código {completed.returncode}.")
-                if completed.stderr:
-                    print("Stderr:")
-                    print(completed.stderr.strip()[:4000])
-                if completed.stdout:
-                    print("Stdout (parcial):")
-                    print(completed.stdout.strip()[:2000])
+                print(f"✗ rclone retornou código {rc}.")
         except Exception as e:
             print(f"Erro ao executar rclone: {e}")
 
