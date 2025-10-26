@@ -565,7 +565,7 @@ class Rocketseat:
         dest_base = os.getenv("RCLONE_DEST", "Cursos").rstrip("/")
         scope = os.getenv("RCLONE_SCOPE", "specialization").lower()
         mode = os.getenv("RCLONE_MODE", "sync").lower()
-        if mode not in ("sync", "copy"):
+        if mode not in ("sync", "copy", "move"):
             mode = "sync"
 
         src = Path("Cursos")
@@ -579,12 +579,17 @@ class Rocketseat:
             print(f"Pasta de origem para sync não encontrada: {src}")
             return
 
+        # Estatística rápida da origem
+        try:
+            file_count = sum(1 for p in src.rglob('*') if p.is_file())
+        except Exception:
+            file_count = -1
         print(f"[sync] Iniciando rclone {mode}...")
-        print(f"[sync] Config: mode={mode}, scope={scope}, src='{src}', dest='{dest}'")
+        print(f"[sync] Config: mode={mode}, scope={scope}, src='{src}', dest='{dest}', files_in_src={file_count}")
         args = [
             rclone_bin,
             mode,
-            str(src),
+            src.as_posix(),
             dest,
             "--transfers", os.getenv("RCLONE_TRANSFERS", "4"),
             "--checkers", os.getenv("RCLONE_CHECKERS", "8"),
@@ -603,6 +608,17 @@ class Rocketseat:
                 args += shlex.split(extra)
             except Exception:
                 print("Aviso: não foi possível interpretar RCLONE_EXTRA_ARGS, ignorando.")
+        # Deteção de dry-run para evitar confusão
+        tokens = set(a.lower() for a in args)
+        if "--dry-run" in tokens or "-n" in tokens:
+            print("[sync] DRY-RUN habilitado (nenhuma alteração será aplicada). Remova '--dry-run' de RCLONE_EXTRA_ARGS para executar de verdade.")
+
+        # Mostrar comando completo para diagnóstico
+        try:
+            debug_cmd = " ".join(shlex.quote(a) for a in args)
+            print(f"[sync] Comando: {debug_cmd}")
+        except Exception:
+            pass
 
         try:
             completed = subprocess.run(
