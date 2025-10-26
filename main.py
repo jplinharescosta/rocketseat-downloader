@@ -472,25 +472,29 @@ class Rocketseat:
         else:
             print(f"\tFormato de aula não reconhecido: {lesson}")
 
-    def _download_courses(self, specialization_slug: str, specialization_name: str):
+    def _download_courses(self, specialization_slug: str, specialization_name: str, auto_select_all_modules: bool = False):
         print(f"Baixando cursos da especialização: {specialization_name}")
         self.download_report.start()
         
         try:
             modules = self.__load_modules(specialization_slug)
 
-            print("\nEscolha os módulos que você quer baixar:")
-            print("[0] - Baixar todos os módulos")
-            for i, module in enumerate(modules, 1):
-                print(f"[{i}] - {module['title']}")
-
-            choices = input("Digite 0 para baixar todos os módulos ou os números dos módulos separados por vírgula (ex: 1, 3, 5): ")
-            
-            if choices.strip() == "0":
+            if auto_select_all_modules:
                 selected_modules = modules
                 print("\nBaixando todos os módulos...")
             else:
-                selected_modules = [modules[int(choice.strip()) - 1] for choice in choices.split(",")]
+                print("\nEscolha os módulos que você quer baixar:")
+                print("[0] - Baixar todos os módulos")
+                for i, module in enumerate(modules, 1):
+                    print(f"[{i}] - {module['title']}")
+
+                choices = input("Digite 0 para baixar todos os módulos ou os números dos módulos separados por vírgula (ex: 1, 3, 5): ")
+                
+                if choices.strip() == "0":
+                    selected_modules = modules
+                    print("\nBaixando todos os módulos...")
+                else:
+                    selected_modules = [modules[int(choice.strip()) - 1] for choice in choices.split(",")]
 
             for module in selected_modules:
                 module_title = module["title"]
@@ -633,10 +637,10 @@ class Rocketseat:
         choice = int(input(">> "))
         if choice == 0:
             for specialization in specializations:
-                self._download_courses(specialization["slug"], specialization["title"])
+                self._download_courses(specialization["slug"], specialization["title"], auto_select_all_modules=True)
         else:
             specialization = specializations[choice - 1]
-            self._download_courses(specialization["slug"], specialization["title"])
+            self._download_courses(specialization["slug"], specialization["title"]) 
 
     def run(self):
         if not self._session_exists:
