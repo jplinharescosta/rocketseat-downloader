@@ -107,14 +107,14 @@ O projeto pode, opcionalmente, copiar/sincronizar/mover os arquivos baixados par
 
 - Site oficial (todas as plataformas): https://rclone.org/install/
 - Windows:
-    - Baixe o executável pelo site oficial, ou
-    - via Winget: `winget install rclone.rclone`, ou
-    - via Chocolatey: `choco install rclone`
+  - Baixe o executável pelo site oficial, ou
+  - via Winget: `winget install rclone.rclone`, ou
+  - via Chocolatey: `choco install rclone`
 - macOS:
-    - Homebrew: `brew install rclone`
+  - Homebrew: `brew install rclone`
 - Linux:
-    - Debian/Ubuntu: `sudo apt-get install rclone`
-    - Ou use o script oficial de instalação do site
+  - Debian/Ubuntu: `sudo apt-get install rclone`
+  - Ou use o script oficial de instalação do site
 
 Após instalar, verifique se está acessível:
 
@@ -131,6 +131,7 @@ rclone config
 ```
 
 Passos típicos (resumo):
+
 - n (novo remote) → nome (ex.: `gdrive`)
 - Escolha o storage: `drive` (Google Drive)
 - Auto config: `y` (abre o navegador para autorizar)
@@ -163,6 +164,7 @@ RCLONE_EXTRA_ARGS=--color never
 ```
 
 Comportamentos importantes:
+
 - `copy`: copia do PC para o Drive, não apaga nada (recomendado para backup).
 - `sync`: sincroniza destino com origem (pode remover do destino o que não existir na origem).
 - `move`: envia e depois apaga os arquivos da origem. Por padrão, também remove diretórios vazios (pode desativar com `RCLONE_KEEP_EMPTY_DIRS=1`).
@@ -170,6 +172,7 @@ Comportamentos importantes:
 - Simulação: use `RCLONE_EXTRA_ARGS=--dry-run` para testar sem aplicar mudanças. Retire depois para executar de verdade.
 
 Diagnóstico útil no console:
+
 - Mostramos o comando completo do rclone, a contagem de arquivos na origem e mensagens em tempo real.
 - Se rclone não estiver no PATH, aparece um aviso claro.
 
