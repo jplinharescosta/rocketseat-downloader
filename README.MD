@@ -65,7 +65,7 @@ Com os pré-requisitos atendidos, siga os passos abaixo.
     Execute o comando a seguir para instalar as bibliotecas necessárias. É recomendado criar um ambiente virtual (`venv`) antes.
 
     ```bash
-    pip install requests beautifulsoup4 m3u8
+    pip install -r requirements.txt
     ```
 
     _Observação: O `m3u8` está listado, mas o código atual não o utiliza ativamente._
@@ -96,6 +96,82 @@ Observações:
 
 - O script carrega automaticamente o `.env` usando `python-dotenv` (já incluso em `requirements.txt`).
 - Variáveis já definidas no ambiente do sistema têm precedência sobre as do `.env`.
+
+---
+
+## ☁️ Backup/Sincronização com Google Drive usando rclone (Opcional)
+
+O projeto pode, opcionalmente, copiar/sincronizar/mover os arquivos baixados para o Google Drive ao final de cada formação, usando o [rclone](https://rclone.org/).
+
+### Instalação do rclone
+
+- Site oficial (todas as plataformas): https://rclone.org/install/
+- Windows:
+    - Baixe o executável pelo site oficial, ou
+    - via Winget: `winget install rclone.rclone`, ou
+    - via Chocolatey: `choco install rclone`
+- macOS:
+    - Homebrew: `brew install rclone`
+- Linux:
+    - Debian/Ubuntu: `sudo apt-get install rclone`
+    - Ou use o script oficial de instalação do site
+
+Após instalar, verifique se está acessível:
+
+```bash
+rclone version
+```
+
+### Configurando um remote do Google Drive
+
+No terminal, rode o assistente:
+
+```bash
+rclone config
+```
+
+Passos típicos (resumo):
+- n (novo remote) → nome (ex.: `gdrive`)
+- Escolha o storage: `drive` (Google Drive)
+- Auto config: `y` (abre o navegador para autorizar)
+- Escolha a conta do Google → permita o acesso
+- Finalize e confirme com `q`
+
+Teste o remote:
+
+```bash
+rclone ls gdrive:
+```
+
+### Usando rclone com este projeto
+
+Configure no `.env` (ou variáveis de ambiente):
+
+```bash
+# habilitar a rotina pós-formação
+RCLONE_SYNC=1
+# nome do remote
+RCLONE_REMOTE=gdrive
+# pasta no drive
+RCLONE_DEST=Cursos
+# comportamento: copy (não apaga), sync (sincroniza), move (move e apaga origem)
+RCLONE_MODE=copy
+# escopo: specialization (só a pasta da formação) ou all (pasta Cursos inteira)
+RCLONE_SCOPE=specialization
+# flags opcionais
+RCLONE_EXTRA_ARGS=--color never
+```
+
+Comportamentos importantes:
+- `copy`: copia do PC para o Drive, não apaga nada (recomendado para backup).
+- `sync`: sincroniza destino com origem (pode remover do destino o que não existir na origem).
+- `move`: envia e depois apaga os arquivos da origem. Por padrão, também remove diretórios vazios (pode desativar com `RCLONE_KEEP_EMPTY_DIRS=1`).
+- Progresso: por padrão, o script força `--progress` para feedback em tempo real (desative com `RCLONE_PROGRESS=0`).
+- Simulação: use `RCLONE_EXTRA_ARGS=--dry-run` para testar sem aplicar mudanças. Retire depois para executar de verdade.
+
+Diagnóstico útil no console:
+- Mostramos o comando completo do rclone, a contagem de arquivos na origem e mensagens em tempo real.
+- Se rclone não estiver no PATH, aparece um aviso claro.
 
 ---
 
