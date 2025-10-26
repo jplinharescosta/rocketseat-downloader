@@ -11,6 +11,7 @@ import time
 import shutil
 import sys
 import subprocess
+import shlex
 from pathlib import Path
 from typing import Optional
 from urllib.parse import parse_qs
@@ -525,6 +526,90 @@ class Rocketseat:
                     continue
         finally:
             self.download_report.finish()
+            # Sincroniza com rclone (opcional), após concluir a especialização
+            try:
+                self._post_specialization_sync(specialization_name)
+            except Exception as e:
+                print(f"Aviso: falha ao sincronizar com rclone: {e}")
+
+    def _post_specialization_sync(self, specialization_name: str):
+        """Sincroniza resultados com Google Drive via rclone, se habilitado.
+
+        Configuração via variáveis de ambiente:
+        - RCLONE_SYNC: '1'|'true' para habilitar (default: desabilitado)
+        - RCLONE_REMOTE: nome do remote (default: 'gdrive')
+        - RCLONE_DEST: pasta destino no remote (default: 'Cursos')
+        - RCLONE_MODE: 'sync' ou 'copy' (default: 'sync')
+        - RCLONE_SCOPE: 'all' ou 'specialization' (default: 'all')
+        - RCLONE_TRANSFERS, RCLONE_CHECKERS, RCLONE_CHUNK_SIZE, RCLONE_RETRIES,
+          RCLONE_LL_RETRIES, RCLONE_STATS, RCLONE_BWLIMIT, RCLONE_EXTRA_ARGS
+        - RCLONE_BIN: nome/caminho do binário (default: 'rclone')
+        """
+        enabled = str(os.getenv("RCLONE_SYNC", "0")).lower() in ("1", "true", "yes")
+        if not enabled:
+            return
+
+        rclone_bin = os.getenv("RCLONE_BIN", "rclone")
+        if shutil.which(rclone_bin) is None:
+            print("rclone não encontrado no PATH. Configure RCLONE_BIN ou instale o rclone.")
+            return
+
+        remote = os.getenv("RCLONE_REMOTE", "gdrive")
+        dest_base = os.getenv("RCLONE_DEST", "Cursos").rstrip("/")
+        scope = os.getenv("RCLONE_SCOPE", "all").lower()
+        mode = os.getenv("RCLONE_MODE", "sync").lower()
+        if mode not in ("sync", "copy"):
+            mode = "sync"
+
+        src = Path("Cursos")
+        dest = f"{remote}:{dest_base}"
+        if scope == "specialization":
+            safe_name = sanitize_string(specialization_name)
+            src = src / safe_name
+            dest = f"{remote}:{dest_base}/{safe_name}"
+
+        if not src.exists():
+            print(f"Pasta de origem para sync não encontrada: {src}")
+            return
+
+        print(f"Iniciando rclone {mode} de '{src}' para '{dest}' ...")
+        args = [
+            rclone_bin,
+            mode,
+            str(src),
+            dest,
+            "--transfers", os.getenv("RCLONE_TRANSFERS", "4"),
+            "--checkers", os.getenv("RCLONE_CHECKERS", "8"),
+            "--drive-chunk-size", os.getenv("RCLONE_CHUNK_SIZE", "64M"),
+            "--retries", os.getenv("RCLONE_RETRIES", "5"),
+            "--low-level-retries", os.getenv("RCLONE_LL_RETRIES", "10"),
+            "--fast-list",
+            "--stats", os.getenv("RCLONE_STATS", "30s"),
+        ]
+        bw = os.getenv("RCLONE_BWLIMIT")
+        if bw:
+            args += ["--bwlimit", bw]
+        extra = os.getenv("RCLONE_EXTRA_ARGS")
+        if extra:
+            try:
+                args += shlex.split(extra)
+            except Exception:
+                print("Aviso: não foi possível interpretar RCLONE_EXTRA_ARGS, ignorando.")
+
+        try:
+            completed = subprocess.run(args, check=False, capture_output=True, text=True)
+            if completed.returncode == 0:
+                print("✓ rclone finalizado com sucesso.")
+            else:
+                print(f"✗ rclone retornou código {completed.returncode}.")
+                if completed.stderr:
+                    print("Stderr:")
+                    print(completed.stderr.strip()[:4000])
+                if completed.stdout:
+                    print("Stdout (parcial):")
+                    print(completed.stdout.strip()[:2000])
+        except Exception as e:
+            print(f"Erro ao executar rclone: {e}")
 
     def select_specializations(self):
         print("Buscando especializações disponíveis...")
@@ -532,7 +617,7 @@ class Rocketseat:
             "types[0]": "SPECIALIZATION",
             "types[1]": "COURSE",
             "types[2]": "EXTRA",
-            "limit": "1000",
+            "limit": "50",
             "offset": "0",
             "page": "1",
             "sort_by": "relevance",
