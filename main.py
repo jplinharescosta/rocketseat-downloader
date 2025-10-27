@@ -338,7 +338,7 @@ class Rocketseat:
         print(f"Início: {time.strftime('%H:%M:%S')} | Busca pelos módulos concluída! | Número de módulos encontrados: {len(modules_data)} | Tempo executado: {elapsed_time:.2f} segundos")
         return modules_data
 
-    def __load_lessons_from_cluster(self, cluster_slug: str):
+    def __load_lessons_from_cluster(self, cluster_slug: str, parent_slug: Optional[str] = None):
         # Carrega as aulas de um nó específico (cluster ou group)
         print(f"Buscando lições para o nó: {cluster_slug}")
         url = f"{BASE_API}/journey-nodes/{cluster_slug}"
@@ -397,7 +397,43 @@ class Rocketseat:
             res.raise_for_status()
             module_data = res.json()
             print(f"Resposta da API para o nó {cluster_slug}:")
-            return parse_module_data(module_data)
+            groups = parse_module_data(module_data)
+            # Se não encontramos grupos/aulas, tentar fallbacks alternativos também
+            if groups:
+                return groups
+            print("Nenhum grupo/aula encontrado no nó principal. Tentando fallbacks...")
+            # Tenta creators?lessonSlug=cluster_slug
+            try:
+                alt_url = f"{BASE_API}/journey-nodes/creators"
+                alt_res = self._get(alt_url, params={"lessonSlug": cluster_slug})
+                alt_res.raise_for_status()
+                module_data = alt_res.json()
+                print(f"Resposta alternativa (creators - vazio primário) para lessonSlug={cluster_slug}:")
+                Path("logs").mkdir(parents=True, exist_ok=True)
+                with open(f"logs/{sanitize_string(cluster_slug)}_lesson_details.json", "w", encoding="utf-8") as f:
+                    json.dump(module_data, f, indent=2)
+                groups = parse_module_data(module_data)
+                if groups:
+                    return groups
+            except Exception:
+                pass
+            # Tenta parentSlug?lessonSlug=cluster_slug quando disponível
+            if parent_slug:
+                try:
+                    parent_url = f"{BASE_API}/journey-nodes/{parent_slug}"
+                    p_res = self._get(parent_url, params={"lessonSlug": cluster_slug})
+                    p_res.raise_for_status()
+                    module_data = p_res.json()
+                    print(f"Resposta alternativa (parent) para parent={parent_slug} e lessonSlug={cluster_slug}:")
+                    Path("logs").mkdir(parents=True, exist_ok=True)
+                    with open(f"logs/{sanitize_string(parent_slug)}_{sanitize_string(cluster_slug)}_lesson_parent_details.json", "w", encoding="utf-8") as f:
+                        json.dump(module_data, f, indent=2)
+                    groups = parse_module_data(module_data)
+                    if groups:
+                        return groups
+                except Exception:
+                    pass
+            return []
         except requests.HTTPError as he:
             status = getattr(he.response, "status_code", None)
             if status in (401, 404):
@@ -412,10 +448,44 @@ class Rocketseat:
                     Path("logs").mkdir(parents=True, exist_ok=True)
                     with open(f"logs/{sanitize_string(cluster_slug)}_lesson_details.json", "w", encoding="utf-8") as f:
                         json.dump(module_data, f, indent=2)
-                    return parse_module_data(module_data)
+                    groups = parse_module_data(module_data)
+                    if groups:
+                        return groups
+                    # Se creators não funcionou/veio vazio, tenta parentSlug?lessonSlug=cluster_slug quando disponível
+                    if parent_slug:
+                        try:
+                            parent_url = f"{BASE_API}/journey-nodes/{parent_slug}"
+                            p_res = self._get(parent_url, params={"lessonSlug": cluster_slug})
+                            p_res.raise_for_status()
+                            module_data = p_res.json()
+                            print(f"Resposta alternativa (parent) para parent={parent_slug} e lessonSlug={cluster_slug}:")
+                            Path("logs").mkdir(parents=True, exist_ok=True)
+                            with open(f"logs/{sanitize_string(parent_slug)}_{sanitize_string(cluster_slug)}_lesson_parent_details.json", "w", encoding="utf-8") as f:
+                                json.dump(module_data, f, indent=2)
+                            return parse_module_data(module_data)
+                        except Exception as e3:
+                            print(f"Fallback (parent) falhou para parent={parent_slug}, lessonSlug={cluster_slug}: {e3}")
+                            return []
+                    return []
                 except Exception as e2:
                     print(f"Fallback (creators) falhou para {cluster_slug}: {e2}")
-                    return []
+                    # Tenta parentSlug?lessonSlug=cluster_slug quando disponível
+                    if parent_slug:
+                        try:
+                            parent_url = f"{BASE_API}/journey-nodes/{parent_slug}"
+                            p_res = self._get(parent_url, params={"lessonSlug": cluster_slug})
+                            p_res.raise_for_status()
+                            module_data = p_res.json()
+                            print(f"Resposta alternativa (parent) para parent={parent_slug} e lessonSlug={cluster_slug}:")
+                            Path("logs").mkdir(parents=True, exist_ok=True)
+                            with open(f"logs/{sanitize_string(parent_slug)}_{sanitize_string(cluster_slug)}_lesson_parent_details.json", "w", encoding="utf-8") as f:
+                                json.dump(module_data, f, indent=2)
+                            return parse_module_data(module_data)
+                        except Exception as e3:
+                            print(f"Fallback (parent) falhou para parent={parent_slug}, lessonSlug={cluster_slug}: {e3}")
+                            return []
+                    else:
+                        return []
             else:
                 print(f"Erro ao buscar lições do cluster {cluster_slug}: {he}")
                 return []
@@ -543,7 +613,12 @@ class Rocketseat:
                     print(f"Usando cluster_slug: {cluster_slug}")
                     
                     # Obter grupos e aulas a partir do cluster_slug
-                    groups = self.__load_lessons_from_cluster(cluster_slug)
+                    parent_slug = None
+                    try:
+                        parent_slug = module.get("course", {}).get("slug") or None
+                    except Exception:
+                        parent_slug = None
+                    groups = self.__load_lessons_from_cluster(cluster_slug, parent_slug=parent_slug)
                     
                     if not groups:
                         print(f"Nenhum grupo encontrado para o módulo: {module_title}")
