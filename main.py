@@ -342,29 +342,20 @@ class Rocketseat:
         # Carrega as aulas de um nó específico (cluster ou group)
         print(f"Buscando lições para o nó: {cluster_slug}")
         url = f"{BASE_API}/journey-nodes/{cluster_slug}"
-        
-        try:
-            res = self._get(url)
-            res.raise_for_status()
-            
-            module_data = res.json()
-            print(f"Resposta da API para o nó {cluster_slug}:")
-            # print(json.dumps(module_data, indent=2)) # Debug completo da resposta da API <<<<<<<<<----------
-            
+
+        def parse_module_data(module_data: dict):
             # Salva estrutura para debug
             Path("logs").mkdir(parents=True, exist_ok=True)
             with open(f"logs/{sanitize_string(cluster_slug)}_cluster_details.json", "w", encoding="utf-8") as f:
                 json.dump(module_data, f, indent=2)
-            
+
             groups = []
             # Caso 1: nó do tipo cluster (contém groups)
             if module_data.get("cluster"):
                 cluster = module_data["cluster"]
-
                 for group in cluster.get("groups", []):
                     group_title = group.get('title', 'Sem Grupo')
                     print(f"\nProcessando grupo: {group_title}")
-
                     group_lessons = []
                     for lesson in group.get("lessons", []):
                         if "last" in lesson and lesson["last"]:
@@ -372,7 +363,6 @@ class Rocketseat:
                             lesson_data["group_title"] = group_title
                             print(f"Adicionando aula: {lesson_data.get('title', 'Sem título')}")
                             group_lessons.append(lesson_data)
-
                     if group_lessons:
                         groups.append({"title": group_title, "lessons": group_lessons})
 
@@ -381,7 +371,6 @@ class Rocketseat:
                 group_node = module_data["group"]
                 group_title = group_node.get('title', 'Sem Grupo')
                 print(f"\nProcessando grupo único: {group_title}")
-
                 group_lessons = []
                 for lesson in group_node.get("lessons", []):
                     if "last" in lesson and lesson["last"]:
@@ -389,12 +378,47 @@ class Rocketseat:
                         lesson_data["group_title"] = group_title
                         print(f"Adicionando aula: {lesson_data.get('title', 'Sem título')}")
                         group_lessons.append(lesson_data)
-
                 if group_lessons:
                     groups.append({"title": group_title, "lessons": group_lessons})
-            
+
+            # Caso 3: nó do tipo lesson (sem group/cluster) – resposta single-lesson
+            elif module_data.get("lesson") and module_data["lesson"].get("last"):
+                lesson_last = module_data["lesson"]["last"]
+                group_title = module_data.get("title") or "Aula"
+                lesson_last["group_title"] = group_title
+                print(f"\nProcessando aula única: {lesson_last.get('title', 'Sem título')}")
+                groups.append({"title": group_title, "lessons": [lesson_last]})
+
             print(f"\nEncontrados {len(groups)} grupos com um total de {sum(len(g['lessons']) for g in groups)} lições")
             return groups
+
+        try:
+            res = self._get(url)
+            res.raise_for_status()
+            module_data = res.json()
+            print(f"Resposta da API para o nó {cluster_slug}:")
+            return parse_module_data(module_data)
+        except requests.HTTPError as he:
+            status = getattr(he.response, "status_code", None)
+            if status in (401, 404):
+                # Fallback: alguns conteúdos single-lesson são acessíveis via /journey-nodes/creators?lessonSlug=...
+                try:
+                    alt_url = f"{BASE_API}/journey-nodes/creators"
+                    alt_res = self._get(alt_url, params={"lessonSlug": cluster_slug})
+                    alt_res.raise_for_status()
+                    module_data = alt_res.json()
+                    print(f"Resposta alternativa (creators) para lessonSlug={cluster_slug}:")
+                    # Salva debug sob nome diferenciado
+                    Path("logs").mkdir(parents=True, exist_ok=True)
+                    with open(f"logs/{sanitize_string(cluster_slug)}_lesson_details.json", "w", encoding="utf-8") as f:
+                        json.dump(module_data, f, indent=2)
+                    return parse_module_data(module_data)
+                except Exception as e2:
+                    print(f"Fallback (creators) falhou para {cluster_slug}: {e2}")
+                    return []
+            else:
+                print(f"Erro ao buscar lições do cluster {cluster_slug}: {he}")
+                return []
         except Exception as e:
             print(f"Erro ao buscar lições do cluster {cluster_slug}: {e}")
             return []
@@ -660,35 +684,90 @@ class Rocketseat:
             print(f"Erro ao executar rclone: {e}")
 
     def select_specializations(self):
-        print("Buscando especializações disponíveis...")
+        print("Buscando itens do catálogo (formações, cursos e extras)...")
         params = {
-            "types[0]": "SPECIALIZATION",  # focamos apenas em formações para evitar 404
+            "types[0]": "SPECIALIZATION",
+            "types[1]": "COURSE",
+            "types[2]": "EXTRA",
             "limit": "1000",
             "offset": "0",
             "page": "1",
             "sort_by": "relevance",
         }
         items = self._get(f"{BASE_API}/catalog/list", params=params).json().get("items", [])
-        # Garante que só mostramos itens do tipo SPECIALIZATION, evitando chamadas /v2/journeys para outros tipos
-        specializations = [it for it in items if it.get("type") == "SPECIALIZATION"]
-        if not specializations:
-            print("Nenhuma formação (SPECIALIZATION) encontrada no catálogo.")
+        if not items:
+            print("Nenhum item encontrado no catálogo.")
             return
-        clear_screen()
-        print("Selecione uma formação ou 0 para selecionar todas:")
-        for i, specialization in enumerate(specializations, 1):
-            print(f"[{i}] - {specialization['title']}")
 
-        choice = int(input(">> "))
+        clear_screen()
+        print("Selecione um item do catálogo ou 0 para selecionar todos:")
+        for i, it in enumerate(items, 1):
+            it_type = it.get("type", "?")
+            print(f"[{i}] - {it['title']} ({it_type})")
+
+        try:
+            choice = int(input(">> "))
+        except Exception:
+            print("Entrada inválida.")
+            return
+
+        def handle_item(item):
+            it_type = item.get("type")
+            slug = item.get("slug")
+            title = item.get("title")
+            if it_type == "SPECIALIZATION":
+                self._download_courses(slug, title, auto_select_all_modules=True)
+            else:
+                self._download_single_item(item)
+
         if choice == 0:
-            for specialization in specializations:
-                self._download_courses(specialization["slug"], specialization["title"], auto_select_all_modules=True)
+            for it in items:
+                handle_item(it)
         else:
-            if choice < 1 or choice > len(specializations):
+            if choice < 1 or choice > len(items):
                 print("Opção inválida.")
                 return
-            specialization = specializations[choice - 1]
-            self._download_courses(specialization["slug"], specialization["title"]) 
+            handle_item(items[choice - 1])
+
+    def _download_single_item(self, item: dict):
+        """Baixa um item individual (COURSE/EXTRA) tratando o slug como um nó raiz.
+
+        Estrutura de destino: Cursos/<Categoria>/<Título>
+        Onde <Categoria> = 'Cursos Individuais' para COURSE, 'Extras' para EXTRA, ou 'Outros' para demais.
+        """
+        it_type = (item.get("type") or "OUTRO").upper()
+        title = item.get("title", "Sem Título")
+        slug = item.get("slug")
+        category_map = {
+            "COURSE": "Cursos Individuais",
+            "EXTRA": "Extras",
+        }
+        category = category_map.get(it_type, "Outros")
+
+        print(f"Baixando item standalone: {title} (tipo: {it_type})")
+        self.download_report.start()
+        try:
+            groups = self.__load_lessons_from_cluster(slug)
+            if not groups:
+                print(f"Nenhum grupo/aula encontrado para o item: {title}")
+                return
+
+            save_path = Path("Cursos") / category / sanitize_string(title)
+            save_path.mkdir(parents=True, exist_ok=True)
+
+            for group_index, group in enumerate(groups, 1):
+                group_title = group["title"]
+                print(f"\nProcessando grupo {group_index}: {group_title}")
+                for lesson_index, lesson in enumerate(group["lessons"], 1):
+                    self._download_lesson(lesson, save_path, group_index, lesson_index)
+                print(f"Grupo {group_index} ({group_title}) concluído!")
+        finally:
+            self.download_report.finish()
+            # Sincroniza a categoria no Drive, semelhante ao fluxo de formação
+            try:
+                self._post_specialization_sync(category)
+            except Exception as e:
+                print(f"Aviso: falha ao sincronizar com rclone: {e}")
 
     def run(self):
         if not self._session_exists:

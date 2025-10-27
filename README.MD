@@ -20,13 +20,13 @@ Não endorsamos o compartilhamento indevido de conteúdos!
 
 - **Autenticação Segura**: Realiza login na sua conta e salva a sessão localmente para não precisar inserir suas credenciais a cada uso. Suporte a credenciais via variáveis de ambiente e senha mascarada no prompt.
 - **Verificação de Dependências**: Checa automaticamente se **FFmpeg** e **yt-dlp** estão instalados e acessíveis no `PATH` do sistema.
-- **Seleção Interativa**: Permite escolher interativamente qual formação e quais módulos específicos você deseja baixar.
+- **Seleção Interativa**: Permite escolher interativamente itens do catálogo (Formações, Cursos e Extras). Para formações, é possível escolher módulos específicos ou baixar todos de uma vez.
 - **Organização Automática**: Cria uma estrutura de pastas organizada para os cursos baixados: `Cursos/Nome da Formação/Nome do Curso/Nome do Módulo/`.
 - **Download Completo**: Baixa os vídeos via `yt-dlp` (com headers obrigatórios) e também materiais de apoio. Gera um `.txt` com metadados (descrição, autor, duração) por aula.
 - **Resiliência de Rede**: Requisições HTTP com retries e timeout configurável, reduzindo falhas transitórias.
-- **Compatível com múltiplas estruturas da API**: Funciona tanto com nós do tipo `cluster` (com `groups`) quanto do tipo `group` (lições diretamente em `group.lessons`).
+- **Compatível com múltiplas estruturas da API**: Funciona com nós do tipo `cluster` (com `groups`), `group` (lições diretamente em `group.lessons`) e também com conteúdos de **aula única** via fallback automático pelo endpoint `GET /journey-nodes/creators?lessonSlug=...` quando necessário.
 - **Relatório Detalhado**: Ao final, gera um relatório (`.txt`) na pasta `relatorios`, informando êxitos, falhas e duração total.
-- **Logs para Debug**: Salva a resposta de `/journey-nodes/{slug}` em `logs/{slug}_cluster_details.json` para inspeção quando necessário.
+- **Logs para Debug**: Salva a resposta de `/journey-nodes/{slug}` em `logs/{slug}_cluster_details.json` e, quando aplicada a rota alternativa de aula única, a resposta em `logs/{slug}_lesson_details.json`.
 
 ---
 
@@ -191,17 +191,17 @@ Diagnóstico útil no console:
     - O script verificará se existe um arquivo de sessão (`.session.pkl`).
     - Se não houver, ele solicitará seu **e-mail** e a **senha mascarada**. Alternativamente, use `ROCKETSEAT_EMAIL` e `ROCKETSEAT_PASSWORD` para login automático. Após o login, a sessão será salva para usos futuros.
 
-3.  **Seleção da Formação**:
+3.  **Seleção do Item (Formação, Curso, Extra)**:
 
-    - Uma lista das suas formações disponíveis será exibida.
-    - Digite o número correspondente à formação que deseja baixar e pressione `Enter`.
+    - Uma lista dos itens disponíveis no seu catálogo será exibida (tipos: `SPECIALIZATION`, `COURSE`, `EXTRA`).
+    - Digite o número correspondente ao item que deseja baixar e pressione `Enter`. Use `0` para selecionar todos.
 
-4.  **Seleção dos Módulos**:
+4.  **Seleção dos Módulos (apenas para Formações)**:
 
-    - Em seguida, o script listará todos os módulos da formação escolhida.
-    - Você pode:
-      - Digitar `0` para baixar **todos os módulos**.
-      - Digitar os números dos módulos desejados, separados por vírgula (ex: `1, 3, 5`), para baixar apenas os selecionados.
+        - Ao escolher uma formação, o script listará os módulos disponíveis.
+        - Você pode:
+            - Digitar `0` para baixar **todos os módulos** (o script já assume isso automaticamente quando você escolhe baixar todas as formações).
+            - Digitar os números dos módulos desejados, separados por vírgula (ex: `1, 3, 5`).
 
 5.  **Aguarde o Download**:
 
@@ -222,6 +222,7 @@ Diagnóstico útil no console:
 
     - Para primeiro teste, você pode usar `RCLONE_EXTRA_ARGS=--dry-run` (simulação), depois remova para executar de verdade.
     - Se preferir não ser perguntado sobre módulos quando selecionar todas as formações, o script já assume “baixar todos os módulos” automaticamente nesse caso.
+    - Para itens do tipo `COURSE` e `EXTRA`, o slug é tratado como um nó raiz e as aulas são baixadas diretamente, sendo salvas em `Cursos/Cursos Individuais/<Título>` ou `Cursos/Extras/<Título>`.
 
 ---
 
@@ -282,4 +283,5 @@ Obrigado por compartilhar conhecimento e facilitar a vida de quem estuda! 🙌
 - "ffmpeg não encontrado": instale o FFmpeg e adicione a pasta `bin` ao PATH.
 - Erros 401/403 ao baixar materiais: garanta que está logado (arquivo `.session.pkl` válido) e que possui acesso ao conteúdo.
 - Se a Rocketseat alterar domínios de entrega dos vídeos, ajuste `CDN_DOMAIN`.
-- Para diagnósticos, confira `logs/{slug}_cluster_details.json` e os relatórios em `relatorios/`.
+- Para diagnósticos, confira `logs/{slug}_cluster_details.json` (estrutura de cluster/grupo) e `logs/{slug}_lesson_details.json` (quando o conteúdo for de aula única via fallback), além dos relatórios em `relatorios/`.
+- Em alguns casos específicos, acessar `GET /journey-nodes/{slug}` pode retornar `401/404` para slugs de aula. Nesses casos o script tenta automaticamente `GET /journey-nodes/creators?lessonSlug={slug}` e prossegue com o download como uma aula única.
