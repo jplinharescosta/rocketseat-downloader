@@ -265,6 +265,41 @@ class Rocketseat:
     def _post(self, url: str, **kwargs):
         kwargs.setdefault("timeout", self.timeout)
         return self.session.post(url, **kwargs)
+
+    def __extract_video_from_classroom_html(self, lesson_slug: str):
+        """Tenta extrair o video_id da página da aula (classroom) quando a API não fornece 'resource'.
+
+        Estratégias:
+        - Buscar URL de playlist .m3u8 e capturar o segmento imediatamente anterior (video_id)
+        - Buscar URLs da iframe.mediadelivery.net que contenham o video_id
+        - Buscar chaves 'resource' ou padrões vazados em scripts inline
+        Retorna o video_id (string) ou None.
+        """
+        try:
+            url = f"{BASE_URL}/classroom/{lesson_slug}"
+            html = self._get(url).text
+
+            # 1) Procura por playlist .m3u8 (bunny/net)
+            m3u8_match = re.search(r"https?://[^\s\"']+/([A-Za-z0-9\-]{10,})/playlist\.m3u8", html)
+            if m3u8_match:
+                return m3u8_match.group(1)
+
+            # 2) Procura por iframe mediadelivery e captura o id no caminho
+            iframe_match = re.search(r"iframe[^>]+src=\"https?://[^\"]*/embed/[^/]+/([A-Za-z0-9\-]{10,})[^\"]*\"", html)
+            if iframe_match:
+                return iframe_match.group(1)
+
+            # 3) Procura por campos 'resource' com URL contendo o id
+            resource_match = re.search(r'"resource"\s*:\s*"([^"]+)"', html)
+            if resource_match:
+                res_url = resource_match.group(1)
+                # tenta extrair o último segmento
+                seg = res_url.rstrip('/').split('/')[-1]
+                if len(seg) >= 10:
+                    return seg
+        except Exception as e:
+            print(f"Falha ao extrair video_id do classroom {lesson_slug}: {e}")
+        return None
     # Processo para validar credenciais, não adianta tentar baixar nada sem acesso legítimo ao conteúdo!
     def login(self, username: str, password: str):
         print("Realizando login...")
@@ -433,6 +468,18 @@ class Rocketseat:
                         return groups
                 except Exception:
                     pass
+            # Como último recurso: tenta extrair do HTML do classroom
+            print("Tentando extrair video_id do HTML do classroom como último recurso...")
+            vid = self.__extract_video_from_classroom_html(cluster_slug)
+            if vid:
+                print(f"Encontrado video_id no HTML: {vid}")
+                synthetic = {
+                    "title": module_data.get("title") or cluster_slug,
+                    "description": module_data.get("description") or "",
+                    "resource": vid,
+                    "group_title": module_data.get("title") or "Aula",
+                }
+                return [{"title": synthetic["group_title"], "lessons": [synthetic]}]
             return []
         except requests.HTTPError as he:
             status = getattr(he.response, "status_code", None)
@@ -465,7 +512,18 @@ class Rocketseat:
                             return parse_module_data(module_data)
                         except Exception as e3:
                             print(f"Fallback (parent) falhou para parent={parent_slug}, lessonSlug={cluster_slug}: {e3}")
-                            return []
+                            # Tenta HTML como último recurso
+                    print("Tentando extrair video_id do HTML do classroom como último recurso...")
+                    vid = self.__extract_video_from_classroom_html(cluster_slug)
+                    if vid:
+                        print(f"Encontrado video_id no HTML: {vid}")
+                        synthetic = {
+                            "title": module_data.get("title") or cluster_slug,
+                            "description": module_data.get("description") or "",
+                            "resource": vid,
+                            "group_title": module_data.get("title") or "Aula",
+                        }
+                        return [{"title": synthetic["group_title"], "lessons": [synthetic]}]
                     return []
                 except Exception as e2:
                     print(f"Fallback (creators) falhou para {cluster_slug}: {e2}")
@@ -483,6 +541,18 @@ class Rocketseat:
                             return parse_module_data(module_data)
                         except Exception as e3:
                             print(f"Fallback (parent) falhou para parent={parent_slug}, lessonSlug={cluster_slug}: {e3}")
+                            # Último recurso: HTML
+                            print("Tentando extrair video_id do HTML do classroom como último recurso...")
+                            vid = self.__extract_video_from_classroom_html(cluster_slug)
+                            if vid:
+                                print(f"Encontrado video_id no HTML: {vid}")
+                                synthetic = {
+                                    "title": cluster_slug,
+                                    "description": "",
+                                    "resource": vid,
+                                    "group_title": "Aula",
+                                }
+                                return [{"title": synthetic["group_title"], "lessons": [synthetic]}]
                             return []
                     else:
                         return []
